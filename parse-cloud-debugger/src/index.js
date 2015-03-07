@@ -38,6 +38,7 @@ var parseLib = require("./parse-1.3.5.min.js");
 var Parse = parseLib.Parse;
 var FUNCTION_TIMEOUT = 15;
 var JOB_TIMEOUT = 15 * 60;
+var __private_session_token = null;
 
 //_____________________________________________________________________________________________________________________//
 
@@ -178,6 +179,27 @@ var parseRawBody = function (req, res, next) {
 }
 
 
+var executeFunc = function (req, res, func, name) {
+    try {
+        func(name, req.body, {
+            success: function (data) {
+                res.header("Access-Control-Allow-Origin", "*");
+                res.header("Access-Control-Request-Headers", "X-Requested-With, accept, content-type");
+                res.header("Access-Control-Allow-Methods", "GET, POST");
+                res.send({result: data});
+            },
+            error: function (err) {
+                console.log(err.stack);
+                res.send(err);
+            }
+        });
+    }
+    catch (e) {
+        console.error(e.stack);
+        res.send(e);
+    }
+}
+
 var reqHandler = function (req, res) {
     var name = req.params.name;
     var type = req.params.type;
@@ -187,21 +209,16 @@ var reqHandler = function (req, res) {
         func = Parse.Cloud.runJob;
     }
 
-    try {
-        func(name, req.body, {
-            success: function (data) {
-                res.header("Access-Control-Allow-Origin", "*");
-                res.header("Access-Control-Request-Headers", "X-Requested-With, accept, content-type");
-                res.header("Access-Control-Allow-Methods", "GET, POST");
-                res.send({result: data});
-            },
-            error  : function (err) {
-                res.send(err);
-            }
+    var sessionToken = req.body._SessionToken || req.headers['x-parse-session-token'];
+    if (sessionToken && !__private_session_token) {
+        __private_session_token = sessionToken;
+        Parse.User.become(__private_session_token).then (function () {
+            executeFunc(req, res, func, name);
+        }, function (err) {
+            res.send(err);
         });
-    }
-    catch (e) {
-        res.send(e);
+    } else {
+        executeFunc(req, res, func, name);
     }
 };
 
@@ -210,7 +227,7 @@ var app = express();
 
 app.set('port', process.env.PORT || 5555);
 app.use(express.bodyParser());
-app.use(parseRawBody);
+//app.use(parseRawBody);
 
 
 app.post('/:type/:name', reqHandler);
