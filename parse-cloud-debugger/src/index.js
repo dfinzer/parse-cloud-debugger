@@ -3,7 +3,7 @@
  */
 (function () {
 
-    var unsupportedParseFunctions = [
+    /*var unsupportedParseFunctions = [
         {
             functionName: 'setTimeout',
             message     : "Error : 'setTimeout' is not supported on Parse Cloud ! Use it only locally!"
@@ -28,7 +28,7 @@
                 return originalFunction.apply(this, arguments);
             }
         })();
-    }
+    }*/
 })();
 
 /*
@@ -93,7 +93,7 @@ var runFunction = function (callBack, name, timeout, data, options) {
         });
     })();
 
-}
+};
 
 Parse.Cloud.run = function (name, data, options) {
     //go to real Parse server
@@ -104,20 +104,21 @@ Parse.Cloud.run = function (name, data, options) {
 
     //else call run the function locally
     runFunction(Parse.localFunctions[name], name, FUNCTION_TIMEOUT, data, options);
-}
+};
 
 
 Parse.Cloud.runJob = function (name, data, options) {
     //helper function to run run jobs locally
     runFunction(Parse.jobs[name], name, JOB_TIMEOUT, data, options);
-}
+};
 
 Parse.Cloud.beforeSave = Parse.Cloud.afterSave = Parse.Cloud.beforeDelete = Parse.Cloud.afterDelete = function () {
     console.log("This function is not available on client !");
-}
+};
 
 Parse.Cloud.httpRequest = function (options) {
     var request = require('request');
+    var promise = new Parse.Promise();
 
     var requestOptions = {
         "url"    : options.url,
@@ -133,32 +134,37 @@ Parse.Cloud.httpRequest = function (options) {
             "text"   : body,
             "status" : response.statusCode,
             "cookies": {},
-            "data"   : {},
+            "data"   : JSON.parse(body),
             "buffer" : {}
         };
 
         options = options || {};
 
-        if (error && options.error != undefined) {
-            options.error(error);
+        if (error) {
+            if (options.error != undefined) {
+                options.error(error);
+            }
+            promise.reject(error);
             return;
         }
 
         if (options.success != undefined) {
             options.success(result);
         }
-    }
+        promise.resolve(result);
+    };
 
     request(options, callback);
-}
+    return promise;
+};
 
 Parse.Cloud.define = function (functionName, callBack) {
     Parse.localFunctions[functionName] = callBack;
-}
+};
 
 Parse.Cloud.job = function (jobName, callBack) {
     Parse.jobs[jobName] = callBack;
-}
+};
 
 
 //_____________________________________________________________________________________________________________________//
@@ -176,29 +182,39 @@ var parseRawBody = function (req, res, next) {
         req.body = JSON.parse(req.rawBody);
         next();
     });
-}
+};
 
 
 var executeFunc = function (req, res, func, name) {
     try {
+        var successOrErrorCalled = false;
         func(name, req.body, {
             success: function (data) {
                 res.header("Access-Control-Allow-Origin", "*");
                 res.header("Access-Control-Request-Headers", "X-Requested-With, accept, content-type");
                 res.header("Access-Control-Allow-Methods", "GET, POST");
                 res.send({result: data});
+                successOrErrorCalled = true;
             },
             error: function (err) {
                 console.log(err.stack);
-                res.send(err);
+                successOrErrorCalled = true;
+                res.send({error: err.stack});
             }
         });
+        setTimeout(function() {
+            if (!successOrErrorCalled) {
+                var message = "Success or Error not called in a timely manner.";
+                console.error(message);
+                res.send(message);
+            }
+        }, 5000);
     }
     catch (e) {
         console.error(e.stack);
         res.send(e);
     }
-}
+};
 
 var reqHandler = function (req, res) {
     var name = req.params.name;

@@ -3725,6 +3725,7 @@
         throw "A promise was rejected even though it had already been " +
           (this._resolved ? "resolved" : "rejected") + ".";
       }
+        console.error(error);
       this._rejected = true;
       this._error = error;
       Parse._arrayEach(this._rejectedCallbacks, function(rejectedCallback) {
